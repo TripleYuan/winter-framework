@@ -24,6 +24,16 @@ import java.util.function.Function;
 @AllArgsConstructor
 public class ResourceResolver {
 
+    public static final Function<Resource, String> FULL_CLASS_NAME_MAPPER = r -> {
+        if (r.getName().endsWith(".class")) {
+            return r.getName()
+                    .substring(0, r.getName().length() - 6)
+                    .replace("/", ".")
+                    .replace("\\", ".");
+        }
+        return null;
+    };
+
     private String basePackage;
 
     public <R> List<R> scan(Function<Resource, R> mapper) {
@@ -40,7 +50,7 @@ public class ResourceResolver {
         }
     }
 
-    <R> void scan0(String basePackagePath, String path, List<R> collector, Function<Resource, R> mapper) throws IOException, URISyntaxException {
+    private <R> void scan0(String basePackagePath, String path, List<R> collector, Function<Resource, R> mapper) throws IOException, URISyntaxException {
         log.debug("scan path: {}", path);
         Enumeration<URL> en = getContextClassLoader().getResources(path);
         while (en.hasMoreElements()) {
@@ -59,7 +69,7 @@ public class ResourceResolver {
         }
     }
 
-    ClassLoader getContextClassLoader() {
+    private ClassLoader getContextClassLoader() {
         ClassLoader cl = null;
         cl = Thread.currentThread().getContextClassLoader();
         if (cl == null) {
@@ -68,11 +78,11 @@ public class ResourceResolver {
         return cl;
     }
 
-    Path jarUriToPath(String basePackagePath, URI jarUri) throws IOException {
+    private Path jarUriToPath(String basePackagePath, URI jarUri) throws IOException {
         return FileSystems.newFileSystem(jarUri, new HashMap<>()).getPath(basePackagePath);
     }
 
-    <R> void scanFile(boolean isJar, String base, Path root, List<R> collector, Function<Resource, R> mapper) throws IOException {
+    private <R> void scanFile(boolean isJar, String base, Path root, List<R> collector, Function<Resource, R> mapper) throws IOException {
         String baseDir = removeTrailingSlash(base);
         Files.walk(root).filter(Files::isRegularFile).forEach(file -> {
             Resource res = null;
@@ -91,18 +101,18 @@ public class ResourceResolver {
         });
     }
 
-    String uriToString(URI uri) throws UnsupportedEncodingException {
+    private String uriToString(URI uri) throws UnsupportedEncodingException {
         return URLDecoder.decode(uri.toString(), "UTF-8");
     }
 
-    String removeLeadingSlash(String s) {
+    private String removeLeadingSlash(String s) {
         if (s.startsWith("/") || s.startsWith("\\")) {
             s = s.substring(1);
         }
         return s;
     }
 
-    String removeTrailingSlash(String s) {
+    private String removeTrailingSlash(String s) {
         if (s.endsWith("/") || s.endsWith("\\")) {
             s = s.substring(0, s.length() - 1);
         }
