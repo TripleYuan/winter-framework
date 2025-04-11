@@ -1,6 +1,8 @@
 package com.tripleyuan.winter.context;
 
 import com.tripleyuan.winter.demo.DemoApplication;
+import com.tripleyuan.winter.demo.bean.*;
+import com.tripleyuan.winter.demo.config.AnimalConfig;
 import com.tripleyuan.winter.io.PropertyResolver;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +27,39 @@ public class AnnotationConfigApplicationContextTest {
         assertThat(context.findBeanDefinition("AppleBean")).isNotNull();
         assertThat(context.findBeanDefinition("appleBean")).isNull();
         assertThat(context.findBeanDefinition("catBean")).isNotNull();
+    }
+
+    @Test
+    public void findBeanDefinition_type() {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(DemoApplication.class, createPropertyResolver());
+        assertThat(context.findBeanDefinition(CatBean.class)).isNotNull();
+        assertThat(context.findBeanDefinition(DogBean.class)).isNotNull();
+        assertThat(context.findBeanDefinition(AppleBean.class)).isNotNull();
+    }
+
+    @Test
+    public void testGetBean() {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(DemoApplication.class, createPropertyResolver());
+
+        assertThat((Object) context.getBean("AppleBean")).isEqualTo(context.getBean(AppleBean.class));
+
+        assertThat(context.getBeans(AnimalConfig.class)).isNotNull();
+        assertThat(context.getBean(CatBean.class)).isNotNull();
+        assertThat(context.getBean(DogBean.class)).isNotNull();
+        assertThat(context.getBean(MonkeyBean.class)).isNotNull();
+        assertThat(context.getBean(AppleBean.class)).isNotNull();
+        assertThat(context.getBean(BananaBean.class)).isNotNull();
+
+        MonkeyBean monkeyBean = context.getBean("monkeyBean");
+        BananaBean bananaBean = context.getBean("bananaBean");
+        assertThat(monkeyBean.getBananaBean()).isEqualTo(bananaBean);
+
+        assertThat(context.getBeans(Bird.class)).isNotNull();
+        assertThat(context.getBeans(Magpie.class)).isNotNull();
+        assertThat(context.getBeans(Eagle.class)).isNotNull();
+        Bird bird = context.getBean(Bird.class);
+        Magpie magpie = context.getBean(Magpie.class);
+        assertThat(bird).isEqualTo(magpie);
     }
 
     PropertyResolver createPropertyResolver() {

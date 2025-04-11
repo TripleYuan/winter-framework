@@ -1,8 +1,7 @@
 package com.tripleyuan.winter.context;
 
 import com.tripleyuan.winter.annotation.*;
-import com.tripleyuan.winter.exception.BeanCreationException;
-import com.tripleyuan.winter.exception.BeanDefinitionException;
+import com.tripleyuan.winter.exception.*;
 import com.tripleyuan.winter.io.PropertyResolver;
 import com.tripleyuan.winter.io.ResourceResolver;
 import jakarta.annotation.Nullable;
@@ -10,9 +9,8 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.*;
 import java.util.*;
 
 import static com.tripleyuan.winter.io.ResourceResolver.FULL_CLASS_NAME_MAPPER;
@@ -22,11 +20,158 @@ import static java.util.stream.Collectors.toList;
 @Slf4j
 public class AnnotationConfigApplicationContext implements ApplicationContext {
 
+    // map: beanName -> beanDefinition
     private Map<String, BeanDefinition> beans;
+    // Beans which are in creation
+    private Set<String> creatingBeanNames = new HashSet<>(256);
+    // propertyResolver
+    private PropertyResolver propertyResolver;
 
     public AnnotationConfigApplicationContext(Class<?> configClass, PropertyResolver propertyResolver) {
+        this.propertyResolver = propertyResolver;
+
+        // scan
         Set<String> candidateClassNames = scanForClassNames(configClass);
+
+        // create bean definitions
         this.beans = createBeanDefinitions(candidateClassNames);
+
+        // create Configuration beans
+        this.beans.values().stream()
+                .filter(this::isConfigurationBean)
+                .forEach(this::createBeanAsEarlySingleton);
+
+        // create BeanPostProcessor beans
+        this.beans.values().stream()
+                .filter(this::isBeanPostProcessorDefinition)
+                .forEach(this::createBeanAsEarlySingleton);
+
+        // create normal beans
+        List<BeanDefinition> normalBeans = this.beans.values().stream()
+                .filter(def -> def.getInstance() == null)
+                .collect(toList());
+        normalBeans.forEach(def -> {
+            // need check null, because it may be created during other bean's creation.
+            if (def.getInstance() == null) {
+                createBeanAsEarlySingleton(def);
+            }
+        });
+    }
+
+    @Nullable
+    public BeanDefinition findBeanDefinition(String beanName) {
+        return this.beans.get(beanName);
+    }
+
+    @Nullable
+    public BeanDefinition findBeanDefinition(String beanName, Class<?> requiredType) {
+        BeanDefinition def = this.beans.get(beanName);
+        if (def == null) {
+            return null;
+        }
+        if (!requiredType.isAssignableFrom(def.getBeanClass())) {
+            throw new BeanNotOfRequiredTypeException(String.format("Autowire required type '%s' but bean '%s' has actual type '%s'.",
+                    requiredType.getName(), beanName, def.getBeanClass().getName()));
+        }
+        return def;
+    }
+
+    @Nullable
+    public BeanDefinition findBeanDefinition(Class<?> requiredType) {
+        List<BeanDefinition> defs = findBeanDefinitions(requiredType);
+        if (defs.isEmpty()) {
+            return null;
+        }
+        if (defs.size() == 1) {
+            return defs.get(0);
+        }
+
+        // Found multiple bean, filter bean with @Primary.
+        List<BeanDefinition> primaryList = defs.stream().filter(t -> t.isPrimary()).collect(toList());
+        if (primaryList.size() == 1) {
+            return primaryList.get(0);
+        }
+
+        if (primaryList.isEmpty()) {
+            throw new NoUniqueBeanDefinitionException(String.format("Multiple bean with type '%s' found, but no @Primary specified.", requiredType.getName()));
+        } else {
+            throw new NoUniqueBeanDefinitionException(String.format("Multiple bean with type '%s' found, and multiple @Primary specified.", requiredType.getName()));
+        }
+
+    }
+
+    private List<BeanDefinition> findBeanDefinitions(Class<?> type) {
+        return beans.values().stream()
+                .filter(bd -> type.isAssignableFrom(bd.getBeanClass()))
+                .collect(toList());
+    }
+
+    @Override
+    public boolean existsBean(String beanName) {
+        return beans.containsKey(beanName);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T getBean(String beanName) {
+        BeanDefinition def = findBeanDefinition(beanName);
+        if (def == null) {
+            throw new NoSuchBeanDefinitionException(String.format("No bean found with name '%s'", beanName));
+        }
+        return (T) def.getRequiredInstance();
+    }
+
+    @Override
+    public <T> T getBean(String beanName, Class<T> requiredType) {
+        T bean = findBean(beanName, requiredType);
+        if (bean == null) {
+            throw new NoSuchBeanDefinitionException(String.format("No bean found with name '%s' and type '%s'", beanName, requiredType.getName()));
+        }
+        return bean;
+    }
+
+    @Override
+    public <T> T getBean(Class<T> requiredType) {
+        T bean = findBean(requiredType);
+        if (bean == null) {
+            throw new NoSuchBeanDefinitionException(String.format("No bean found with type '%s'", requiredType.getName()));
+        }
+        return bean;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> List<T> getBeans(Class<T> requiredType) {
+        return findBeanDefinitions(requiredType).stream()
+                .map(def -> (T) def.getRequiredInstance())
+                .collect(toList());
+    }
+
+    // findBean return null if bean no exists.
+    @Nullable
+    @SuppressWarnings("unchecked")
+    protected <T> T findBean(String beanName, Class<T> requiredType) {
+        BeanDefinition def = findBeanDefinition(beanName, requiredType);
+        if (def == null) {
+            return null;
+        }
+        return (T) def.getRequiredInstance();
+    }
+
+    // findBean return null if bean no exists.
+    @Nullable
+    @SuppressWarnings("unchecked")
+    protected <T> T findBean(Class<T> requiredType) {
+        BeanDefinition def = findBeanDefinition(requiredType);
+        if (def == null) {
+            return null;
+        }
+        return (T) def.getRequiredInstance();
+    }
+
+    @Override
+    public void close() {
+
     }
 
     private Set<String> scanForClassNames(Class<?> configClass) {
@@ -64,7 +209,7 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
     }
 
     private Map<String, BeanDefinition> createBeanDefinitions(Set<String> candidateClassNames) {
-        Map<String, BeanDefinition> defs = new HashMap<>();
+        Map<String, BeanDefinition> defs = new HashMap<>(256);
         for (String className : candidateClassNames) {
             Class<?> clazz = null;
             try {
@@ -87,8 +232,10 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
                     throw new BeanCreationException("@Component class " + className + " must not be private.");
                 }
 
+                String beanName = getBeanName(clazz);
+
                 BeanDefinition def = new BeanDefinition();
-                def.setName(getBeanName(clazz));
+                def.setName(beanName);
                 def.setBeanClass(clazz);
                 def.setConstructor(getSutableConstructor(clazz));
                 def.setOrder(getOrder(clazz));
@@ -103,7 +250,7 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
                     if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
                         throw new BeanDefinitionException("@Configuration class " + className + " cannot be BeanPostProcessor.");
                     }
-                    scanFactoryMethods(className, clazz, defs);
+                    scanFactoryMethods(beanName, clazz, defs);
                 }
             }
         }
@@ -170,7 +317,7 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
             if (beanClass == void.class || beanClass == Void.class) {
                 throw new BeanDefinitionException("@Bean method " + configClazz.getName() + "." + method.getName() + " must not return void.");
             }
-            log.info("@Bean method {}.{} found in config class.", configClazz.getName(), method.getName());
+            log.debug("@Bean method {}.{} found in config class.", configClazz.getName(), method.getName());
 
             BeanDefinition def = new BeanDefinition();
             def.setName(getBeanName(method));
@@ -192,68 +339,100 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
         }
     }
 
-    @Nullable
-    public BeanDefinition findBeanDefinition(String beanName) {
-        return this.beans.get(beanName);
+    private boolean isConfigurationBean(BeanDefinition def) {
+        return findAnnotation(def.getBeanClass(), Configuration.class) != null;
     }
 
-    @Nullable
-    public BeanDefinition findBeanDefinition(Class<?> type) {
-        List<BeanDefinition> beanDefinitions = findBeanDefinitions(type);
-        if (beanDefinitions.isEmpty()) {
-            return null;
-        }
-        if (beanDefinitions.size() == 1) {
-            return beanDefinitions.get(0);
+    private boolean isBeanPostProcessorDefinition(BeanDefinition def) {
+        return BeanPostProcessor.class.isAssignableFrom(def.getBeanClass());
+    }
+
+    private Object createBeanAsEarlySingleton(BeanDefinition def) {
+        log.debug("Try to create bean '{}' as early singleton.", def.getName());
+        if (!creatingBeanNames.add(def.getName())) {
+            throw new BeanCreationException("Found cyclic dependency when creating bean '" + def.getName() + "'");
         }
 
-        // Found multiple bean, filter bean with @Primary.
-        List<BeanDefinition> primaryList = beanDefinitions.stream().filter(t -> t.isPrimary()).collect(toList());
-        if (primaryList.size() == 1) {
-            return primaryList.get(0);
+        // create bean instance by constructor or factory method
+        Executable createFn = def.getFactoryName() == null ? def.getConstructor() : def.getFactoryMethod();
+
+        // resolve parameter
+        final Parameter[] parameters = createFn.getParameters();
+        Annotation[][] parametersAnnos = createFn.getParameterAnnotations();
+        final Object[] args = new Object[parameters.length];
+        for (int i = 0; i < parameters.length; i++) {
+            final Parameter param = parameters[i];
+            final Annotation[] paramAnnos = parametersAnnos[i];
+            final Value value = getAnnotation(paramAnnos, Value.class);
+            final Autowired autowired = getAnnotation(paramAnnos, Autowired.class);
+
+            // Cannot create Configuration bean with @Autowired
+            boolean isConfiguration = isConfigurationBean(def);
+            if (isConfiguration && autowired != null) {
+                throw new BeanCreationException(String.format("Cannot specify @Autowire when creating @Configuration bean '%s': %s",
+                        def.getName(), def.getBeanClass().getName()));
+            }
+
+            // Cannot create BeanPostProcessor bean with @Autowired
+            boolean isBeanPostProcessor = isBeanPostProcessorDefinition(def);
+            if (isBeanPostProcessor && autowired != null) {
+                throw new BeanCreationException(String.format("Cannot specify @Autowire when creating @BeanPostProcessor bean '%s': %s",
+                        def.getName(), def.getBeanClass().getName()));
+            }
+
+            if (value == null && autowired == null) {
+                throw new BeanCreationException(String.format("Must specify @Value or @Autowired when create bean '%s': %s",
+                        def.getName(), def.getBeanClass().getName()));
+            }
+            if (value != null && autowired != null) {
+                throw new BeanCreationException(String.format("Cannot specify both @Value and @Autowired when create bean '%s': %s",
+                        def.getName(), def.getBeanClass().getName()));
+            }
+
+            Class<?> type = param.getType();
+            if (value != null) {
+                // 'value' parameter
+                args[i] = propertyResolver.getRequiredProperty(value.value());
+            } else {
+                // 'autowired' parameter
+                String name = autowired.name();
+                boolean isRequired = autowired.value();
+                BeanDefinition dependsOnDef = name.isEmpty() ? findBeanDefinition(type) : findBeanDefinition(name, type);
+                if (isRequired && dependsOnDef == null) {
+                    throw new BeanCreationException(String.format("Missing autowired bean with type '%s',  when create bean '%s': %s",
+                            type.getName(), def.getName(), def.getBeanClass().getName()));
+                }
+
+                if (dependsOnDef != null) {
+                    Object autowiredBeanInstance = dependsOnDef.getInstance();
+                    if (autowiredBeanInstance == null) {
+                        autowiredBeanInstance = createBeanAsEarlySingleton(dependsOnDef);
+                    }
+                    args[i] = autowiredBeanInstance;
+                } else {
+                    args[i] = null;
+                }
+            }
         }
 
-        if (primaryList.isEmpty()) {
-            throw new BeanDefinitionException(String.format("Multiple bean with type '%s' found, but no @Primary specified.", type.getName()));
+        // instantiate bean
+        Object beanInstance = null;
+        if (createFn instanceof Constructor) {
+            try {
+                beanInstance = def.getConstructor().newInstance(args);
+            } catch (Exception e) {
+                throw new BeanDefinitionException(String.format("Exception when create bean '%s': %s", def.getName(), def.getBeanClass().getName()), e);
+            }
         } else {
-            throw new BeanDefinitionException(String.format("Multiple bean with type '%s' found, and multiple @Primary specified.", type.getName()));
+            Object configInstance = getBean(def.getFactoryName());
+            try {
+                beanInstance = def.getFactoryMethod().invoke(configInstance, args);
+            } catch (Exception e) {
+                throw new BeanDefinitionException(String.format("Exception when create bean '%s': %s", def.getName(), def.getBeanClass().getName()), e);
+            }
         }
+        def.setInstance(beanInstance);
 
-    }
-
-    private List<BeanDefinition> findBeanDefinitions(Class<?> type) {
-        return beans.values().stream()
-                .filter(bd -> type.isAssignableFrom(bd.getBeanClass()))
-                .collect(toList());
-    }
-
-    @Override
-    public boolean existsBean(String beanName) {
-        return false;
-    }
-
-    @Override
-    public <T> T getBean(String beanName) {
-        return null;
-    }
-
-    @Override
-    public <T> T getBean(String beanName, Class<T> requiredType) {
-        return null;
-    }
-
-    @Override
-    public <T> T getBean(Class<T> requiredType) {
-        return null;
-    }
-
-    @Override
-    public <T> List<T> getBeans(Class<T> requiredType) {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public void close() {
-
+        return beanInstance;
     }
 }

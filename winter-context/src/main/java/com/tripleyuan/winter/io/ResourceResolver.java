@@ -93,7 +93,7 @@ public class ResourceResolver {
                 String name = removeLeadingSlash(path.substring(baseDir.length()));
                 res = new Resource("file:" + path, name);
             }
-            log.info("found resource: {}", res);
+            log.debug("found resource: {}", res);
             R r = mapper.apply(res);
             if (r != null) {
                 collector.add(r);
