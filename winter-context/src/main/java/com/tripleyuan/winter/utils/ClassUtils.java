@@ -123,13 +123,15 @@ public class ClassUtils {
     @Nullable
     public static Method findAnnotationMethod(Class<?> clazz, Class<? extends Annotation> annoClass) {
         // try get declared method:
-        List<Method> ms = Arrays.stream(clazz.getDeclaredMethods()).filter(m -> m.isAnnotationPresent(annoClass)).map(m -> {
-            if (m.getParameterCount() != 0) {
-                throw new BeanDefinitionException(
-                        String.format("Method '%s' with @%s must not have argument: %s", m.getName(), annoClass.getSimpleName(), clazz.getName()));
-            }
-            return m;
-        }).collect(Collectors.toList());
+        List<Method> ms = Arrays.stream(clazz.getDeclaredMethods())
+                .filter(m -> m.isAnnotationPresent(annoClass))
+                .map(m -> {
+                    if (m.getParameterCount() != 0) {
+                        throw new BeanDefinitionException(
+                                String.format("Method '%s' with @%s must not have argument: %s", m.getName(), annoClass.getSimpleName(), clazz.getName()));
+                    }
+                    return m;
+                }).collect(Collectors.toList());
         if (ms.isEmpty()) {
             return null;
         }
