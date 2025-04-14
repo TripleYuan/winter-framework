@@ -1,69 +1,173 @@
 package com.tripleyuan.winter.context;
 
-import com.tripleyuan.winter.demo.DemoApplication;
-import com.tripleyuan.winter.demo.bean.*;
-import com.tripleyuan.winter.demo.config.AnimalConfig;
+import com.tripleyuan.winter.imported.LocalDateConfiguration;
+import com.tripleyuan.winter.imported.ZonedDateConfiguration;
+import com.tripleyuan.winter.scan.ScanApplication;
+import com.tripleyuan.winter.scan.convert.ValueConverterBean;
+import com.tripleyuan.winter.scan.custom.annotation.CustomAnnotationBean;
+import com.tripleyuan.winter.scan.destroy.AnnotationDestroyBean;
+import com.tripleyuan.winter.scan.destroy.SpecifyDestroyBean;
+import com.tripleyuan.winter.scan.init.AnnotationInitBean;
+import com.tripleyuan.winter.scan.init.SpecifyInitBean;
+import com.tripleyuan.winter.scan.nested.OuterBean;
+import com.tripleyuan.winter.scan.nested.OuterBean.NestedBean;
+import com.tripleyuan.winter.scan.primary.DogBean;
+import com.tripleyuan.winter.scan.primary.PersonBean;
+import com.tripleyuan.winter.scan.primary.TeacherBean;
+import com.tripleyuan.winter.scan.proxy.InjectProxyOnConstructorBean;
+import com.tripleyuan.winter.scan.proxy.InjectProxyOnPropertyBean;
+import com.tripleyuan.winter.scan.proxy.OriginBean;
+import com.tripleyuan.winter.scan.proxy.SecondProxyBean;
+import com.tripleyuan.winter.scan.sub1.Sub1Bean;
+import com.tripleyuan.winter.scan.sub1.sub2.Sub2Bean;
+import com.tripleyuan.winter.scan.sub1.sub2.sub3.Sub3Bean;
 import com.tripleyuan.winter.io.PropertyResolver;
+import lombok.var;
 import org.junit.jupiter.api.Test;
 
+import java.time.*;
 import java.util.Properties;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class AnnotationConfigApplicationContextTest {
 
     @Test
-    public void testComponentAnnotation() {
-        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(DemoApplication.class, createPropertyResolver());
-        assertThat(context.findBeanDefinition("dogBean")).isNotNull();
-        assertThat(context.findBeanDefinition("AppleBean")).isNotNull();
-        assertThat(context.findBeanDefinition("appleBean")).isNull();
+    public void testCustomAnnotation() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            assertNotNull(ctx.getBean(CustomAnnotationBean.class));
+            assertNotNull(ctx.getBean("customAnnotation"));
+        }
     }
 
     @Test
-    public void testConfiguration() {
-        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(DemoApplication.class, createPropertyResolver());
-        assertThat(context.findBeanDefinition("dogBean")).isNotNull();
-        assertThat(context.findBeanDefinition("AppleBean")).isNotNull();
-        assertThat(context.findBeanDefinition("appleBean")).isNull();
-        assertThat(context.findBeanDefinition("catBean")).isNotNull();
+    public void testInitMethod() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            // test @PostConstruct:
+            var bean1 = ctx.getBean(AnnotationInitBean.class);
+            var bean2 = ctx.getBean(SpecifyInitBean.class);
+            assertEquals("Scan App / v1.0", bean1.appName);
+            assertEquals("Scan App / v1.0", bean2.appName);
+        }
     }
 
     @Test
-    public void findBeanDefinition_type() {
-        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(DemoApplication.class, createPropertyResolver());
-        assertThat(context.findBeanDefinition(CatBean.class)).isNotNull();
-        assertThat(context.findBeanDefinition(DogBean.class)).isNotNull();
-        assertThat(context.findBeanDefinition(AppleBean.class)).isNotNull();
+    public void testImport() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            assertNotNull(ctx.getBean(LocalDateConfiguration.class));
+            assertNotNull(ctx.getBean("startLocalDate"));
+            assertNotNull(ctx.getBean("startLocalDateTime"));
+            assertNotNull(ctx.getBean(ZonedDateConfiguration.class));
+            assertNotNull(ctx.getBean("startZonedDateTime"));
+        }
     }
 
     @Test
-    public void testGetBean() {
-        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(DemoApplication.class, createPropertyResolver());
+    public void testDestroyMethod() {
+        AnnotationDestroyBean bean1 = null;
+        SpecifyDestroyBean bean2 = null;
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            // test @PreDestroy:
+            bean1 = ctx.getBean(AnnotationDestroyBean.class);
+            bean2 = ctx.getBean(SpecifyDestroyBean.class);
+            assertEquals("Scan App", bean1.appTitle);
+            assertEquals("Scan App", bean2.appTitle);
+        }
+        assertNull(bean1.appTitle);
+        assertNull(bean2.appTitle);
+    }
 
-        assertThat((Object) context.getBean("AppleBean")).isEqualTo(context.getBean(AppleBean.class));
+    @Test
+    public void testConverter() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            var bean = ctx.getBean(ValueConverterBean.class);
 
-        assertThat(context.getBeans(AnimalConfig.class)).isNotNull();
-        assertThat(context.getBean(CatBean.class)).isNotNull();
-        assertThat(context.getBean(DogBean.class)).isNotNull();
-        assertThat(context.getBean(MonkeyBean.class)).isNotNull();
-        assertThat(context.getBean(AppleBean.class)).isNotNull();
-        assertThat(context.getBean(BananaBean.class)).isNotNull();
+            assertNotNull(bean.injectedBoolean);
+            assertTrue(bean.injectedBooleanPrimitive);
+            assertTrue(bean.injectedBoolean);
 
-        MonkeyBean monkeyBean = context.getBean("monkeyBean");
-        BananaBean bananaBean = context.getBean("bananaBean");
-        assertThat(monkeyBean.getBananaBean()).isEqualTo(bananaBean);
+            assertNotNull(bean.injectedByte);
+            assertEquals((byte) 123, bean.injectedByte);
+            assertEquals((byte) 123, bean.injectedBytePrimitive);
 
-        assertThat(context.getBeans(Bird.class)).isNotNull();
-        assertThat(context.getBeans(Magpie.class)).isNotNull();
-        assertThat(context.getBeans(Eagle.class)).isNotNull();
-        Bird bird = context.getBean(Bird.class);
-        Magpie magpie = context.getBean(Magpie.class);
-        assertThat(bird).isEqualTo(magpie);
+            assertNotNull(bean.injectedShort);
+            assertEquals((short) 12345, bean.injectedShort);
+            assertEquals((short) 12345, bean.injectedShortPrimitive);
+
+            assertNotNull(bean.injectedInteger);
+            assertEquals(1234567, bean.injectedInteger);
+            assertEquals(1234567, bean.injectedIntPrimitive);
+
+            assertNotNull(bean.injectedLong);
+            assertEquals(123456789_000L, bean.injectedLong);
+            assertEquals(123456789_000L, bean.injectedLongPrimitive);
+
+            assertNotNull(bean.injectedFloat);
+            assertEquals(12345.6789F, bean.injectedFloat, 0.0001F);
+            assertEquals(12345.6789F, bean.injectedFloatPrimitive, 0.0001F);
+
+            assertNotNull(bean.injectedDouble);
+            assertEquals(123456789.87654321, bean.injectedDouble, 0.0000001);
+            assertEquals(123456789.87654321, bean.injectedDoublePrimitive, 0.0000001);
+
+            assertEquals(LocalDate.parse("2023-03-29"), bean.injectedLocalDate);
+            assertEquals(LocalTime.parse("20:45:01"), bean.injectedLocalTime);
+            assertEquals(LocalDateTime.parse("2023-03-29T20:45:01"), bean.injectedLocalDateTime);
+            assertEquals(ZonedDateTime.parse("2023-03-29T20:45:01+08:00[Asia/Shanghai]"), bean.injectedZonedDateTime);
+            assertEquals(Duration.parse("P2DT3H4M"), bean.injectedDuration);
+            assertEquals(ZoneId.of("Asia/Shanghai"), bean.injectedZoneId);
+        }
+    }
+
+    @Test
+    public void testNested() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            ctx.getBean(OuterBean.class);
+            ctx.getBean(NestedBean.class);
+        }
+    }
+
+    @Test
+    public void testPrimary() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            var person = ctx.getBean(PersonBean.class);
+            assertEquals(TeacherBean.class, person.getClass());
+            var dog = ctx.getBean(DogBean.class);
+            assertEquals("Husky", dog.type);
+        }
+    }
+
+    @Test
+    public void testProxy() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            // test proxy:
+            OriginBean proxy = ctx.getBean(OriginBean.class);
+            assertSame(SecondProxyBean.class, proxy.getClass());
+            assertEquals("Scan App", proxy.getName());
+            assertEquals("v1.0", proxy.getVersion());
+            // make sure proxy.field is not injected:
+            assertNull(proxy.name);
+            assertNull(proxy.version);
+
+            // other beans are injected proxy instance:
+            var inject1 = ctx.getBean(InjectProxyOnPropertyBean.class);
+            var inject2 = ctx.getBean(InjectProxyOnConstructorBean.class);
+            assertSame(proxy, inject1.injected);
+            assertSame(proxy, inject2.injected);
+        }
+    }
+
+    @Test
+    public void testSub() {
+        try (var ctx = new AnnotationConfigApplicationContext(ScanApplication.class, createPropertyResolver())) {
+            ctx.getBean(Sub1Bean.class);
+            ctx.getBean(Sub2Bean.class);
+            ctx.getBean(Sub3Bean.class);
+        }
     }
 
     PropertyResolver createPropertyResolver() {
-        Properties ps = new Properties();
+        var ps = new Properties();
         ps.put("app.title", "Scan App");
         ps.put("app.version", "v1.0");
         ps.put("jdbc.url", "jdbc:hsqldb:file:testdb.tmp");
@@ -82,7 +186,7 @@ public class AnnotationConfigApplicationContextTest {
         ps.put("convert.zoneddatetime", "2023-03-29T20:45:01+08:00[Asia/Shanghai]");
         ps.put("convert.duration", "P2DT3H4M");
         ps.put("convert.zoneid", "Asia/Shanghai");
-
-        return new PropertyResolver(ps);
+        var pr = new PropertyResolver(ps);
+        return pr;
     }
 }

@@ -5,7 +5,7 @@ import com.tripleyuan.winter.annotation.Configuration;
 import com.tripleyuan.winter.demo.bean.CatBean;
 
 @Configuration
-public class AnimalConfig {
+public class BeanConfig {
 
     @Bean
     public CatBean catBean(){

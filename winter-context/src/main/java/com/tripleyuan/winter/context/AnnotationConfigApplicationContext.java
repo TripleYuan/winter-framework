@@ -23,30 +23,37 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
     // map: beanName -> beanDefinition
     private Map<String, BeanDefinition> beans;
     // Beans which are in creation
-    private Set<String> creatingBeanNames = new HashSet<>(256);
+    private Set<String> creatingBeanNames;
     // propertyResolver
     private PropertyResolver propertyResolver;
+    // beanPostProcessors
+    private List<BeanPostProcessor> beanPostProcessors;
 
     public AnnotationConfigApplicationContext(Class<?> configClass, PropertyResolver propertyResolver) {
         this.propertyResolver = propertyResolver;
+        this.creatingBeanNames = new HashSet<>(256);
+        this.beanPostProcessors = new ArrayList<>(64);
 
-        // scan
+        // scan bean class
         Set<String> candidateClassNames = scanForClassNames(configClass);
 
-        // create bean definitions
+        // create bean definition
         this.beans = createBeanDefinitions(candidateClassNames);
 
-        // create Configuration beans
+        // create Configuration bean
         this.beans.values().stream()
                 .filter(this::isConfigurationBean)
                 .forEach(this::createBeanAsEarlySingleton);
 
-        // create BeanPostProcessor beans
-        this.beans.values().stream()
+        // create BeanPostProcessor bean
+        List<BeanPostProcessor> processors = this.beans.values().stream()
                 .filter(this::isBeanPostProcessorDefinition)
-                .forEach(this::createBeanAsEarlySingleton);
+                .sorted()
+                .map(def -> (BeanPostProcessor) createBeanAsEarlySingleton(def))
+                .collect(toList());
+        this.beanPostProcessors.addAll(processors);
 
-        // create normal beans
+        // create normal bean
         List<BeanDefinition> normalBeans = this.beans.values().stream()
                 .filter(def -> def.getInstance() == null)
                 .collect(toList());
@@ -56,6 +63,22 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
                 createBeanAsEarlySingleton(def);
             }
         });
+
+        // inject
+        this.beans.values().forEach(def -> {
+            injectBean(def);
+        });
+
+        // init
+        this.beans.values().forEach(def -> {
+            initBean(def);
+        });
+
+        if (log.isDebugEnabled()) {
+            this.beans.values().stream().sorted().forEach(def -> {
+                log.debug("bean initialized: {}", def);
+            });
+        }
     }
 
     @Nullable
@@ -176,7 +199,9 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
 
     private Set<String> scanForClassNames(Class<?> configClass) {
         ComponentScan componentScan = findAnnotation(configClass, ComponentScan.class);
-        String[] basePackages = componentScan == null ? new String[]{configClass.getPackage().getName()} : componentScan.value();
+        String[] basePackages = componentScan == null || componentScan.value().length == 0 ?
+                new String[]{configClass.getPackage().getName()} : componentScan.value();
+        log.debug("Component scan base packages: {}", Arrays.toString(basePackages));
 
         Set<String> classNames = new HashSet<>();
         // scan package
@@ -434,5 +459,154 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
         def.setInstance(beanInstance);
 
         return beanInstance;
+    }
+
+    private void injectBean(BeanDefinition def) {
+        Object beanInstance = getProxiedInstance(def);
+        try {
+            injectProperties(def, def.getBeanClass(), beanInstance);
+        } catch (ReflectiveOperationException e) {
+            throw new BeanCreationException(String.format("Exception when inject properties for bean '%s': %s", def.getName(), def.getBeanClass().getName()), e);
+        }
+    }
+
+    private void injectProperties(BeanDefinition def, Class<?> clazz, Object bean) throws ReflectiveOperationException {
+        // field injection
+        for (Field field : clazz.getDeclaredFields()) {
+            tryInjectProperty(def, clazz, bean, field);
+        }
+        // setter injection
+        for (Method method : clazz.getDeclaredMethods()) {
+            tryInjectProperty(def, clazz, bean, method);
+        }
+
+        // handle supper class
+        Class<?> superclass = clazz.getSuperclass();
+        if (superclass != null) {
+            injectProperties(def, superclass, bean);
+        }
+    }
+
+    private void tryInjectProperty(BeanDefinition def, Class<?> clazz, Object bean, AccessibleObject acc) throws ReflectiveOperationException {
+        Value value = acc.getAnnotation(Value.class);
+        Autowired autowired = acc.getAnnotation(Autowired.class);
+        if (value == null && autowired == null) {
+            return;
+        }
+
+        Field field = null;
+        Method method = null;
+        if (acc instanceof Field) {
+            field = (Field) acc;
+            checkFieldOrMethod(field);
+            field.setAccessible(true);
+        }
+        if (acc instanceof Method) {
+            method = (Method) acc;
+            checkFieldOrMethod(method);
+            if (method.getParameters().length != 1) {
+                throw new BeanDefinitionException(
+                        String.format("Cannot inject a non-setter method %s for bean '%s': %s", method.getName(), def.getName(), def.getBeanClass().getName()));
+            }
+            method.setAccessible(true);
+        }
+
+        String accessibleName = field != null ? field.getName() : method.getName();
+        Class<?> accessibleType = field != null ? field.getType() : method.getParameterTypes()[0];
+
+        if (value != null && autowired != null) {
+            throw new BeanCreationException(String.format("Cannot specify both @Value and @Autowired when inject %s.%s for bean '%s': %s",
+                    clazz.getSimpleName(), accessibleName, def.getName(), def.getBeanClass().getName()));
+        }
+
+        // inject by value
+        if (value != null) {
+            Object propValue = propertyResolver.getRequiredProperty(value.value(), accessibleType);
+            if (field != null) {
+                log.debug("Filed injection by @Value: {}.{} = {}", def.getBeanClass().getName(), accessibleName, propValue);
+                field.set(bean, propValue);
+            }
+            if (method != null) {
+                log.debug("Method injection by @Value: {}.{} ({})", def.getBeanClass().getName(), accessibleName, propValue);
+                method.invoke(bean, propValue);
+            }
+        }
+
+        // inject by autowired
+        if (autowired != null) {
+            boolean isRequired = autowired.value();
+            Object depends = autowired.name().isEmpty() ? findBean(accessibleType) : findBean(autowired.name(), accessibleType);
+            if (isRequired && depends == null) {
+                throw new UnsatisfiedDependencyException(String.format("Dependency bean not found when inject %s.%s for bean '%s': %s", clazz.getSimpleName(),
+                        accessibleName, def.getName(), def.getBeanClass().getName()));
+            }
+            if (depends != null) {
+                if (field != null) {
+                    log.debug("Field injection by @Autowired: {}.{} = {}", def.getBeanClass().getName(), accessibleName, depends);
+                    field.set(bean, depends);
+                }
+                if (method != null) {
+                    log.debug("Method injection by @Autowired: {}.{} ({})", def.getBeanClass().getName(), accessibleName, depends);
+                    method.invoke(bean, depends);
+                }
+            }
+        }
+    }
+
+    private void checkFieldOrMethod(Member m) {
+        int mod = m.getModifiers();
+        if (Modifier.isStatic(mod)) {
+            throw new BeanDefinitionException("Cannot inject static field: " + m);
+        }
+        if (Modifier.isFinal(mod)) {
+            if (m instanceof Field) {
+                throw new BeanDefinitionException("Cannot inject final field: " + ((Field) m).getName());
+            }
+            if (m instanceof Method) {
+                log.warn("Inject final method should be careful because it is not called on target bean when bean is proxied and may cause NullPointerException.");
+            }
+        }
+    }
+
+    private void initBean(BeanDefinition def) {
+        Object beanInstance = getProxiedInstance(def);
+
+        // invoke init method
+        callMethod(beanInstance, def.getInitMethodName(), def.getInitMethod());
+
+        // invoke BeanPostProcessor.postProcessAfterInitialization()
+        beanPostProcessors.forEach(beanPostProcessor -> {
+            Object processedInstance = beanPostProcessor.postProcessAfterInitialization(def.getInstance(), def.getName());
+            if (processedInstance != def.getInstance()) {
+                log.debug("BeanPostProcessor {} return different bean from {} to {}.", beanPostProcessor.getClass().getSimpleName(),
+                        def.getInstance().getClass().getName(), processedInstance.getClass().getName());
+                def.setInstance(processedInstance);
+            }
+        });
+    }
+
+    private Object getProxiedInstance(BeanDefinition def) {
+        // todo
+        return def.getInstance();
+    }
+
+    private void callMethod(Object beanInstance, String methodName, Method method) {
+        // Invoke init/destroy method
+        if (method != null) {
+            try {
+                method.invoke(beanInstance);
+            } catch (ReflectiveOperationException e) {
+                throw new BeanCreationException(e);
+            }
+        } else if (methodName != null) {
+            // Find method by name from beanClass, then invoke it.
+            Method named = getNamedMethod(beanInstance.getClass(), methodName);
+            named.setAccessible(true);
+            try {
+                named.invoke(beanInstance);
+            } catch (ReflectiveOperationException e) {
+                throw new BeanCreationException(e);
+            }
+        }
     }
 }
