@@ -30,6 +30,7 @@ public class AnnotationConfigApplicationContext implements ConfigurableApplicati
     private List<BeanPostProcessor> beanPostProcessors;
 
     public AnnotationConfigApplicationContext(Class<?> configClass, PropertyResolver propertyResolver) {
+        ApplicationContextUtils.setApplicationContext(this);
         this.propertyResolver = propertyResolver;
         this.creatingBeanNames = new HashSet<>(256);
         this.beanPostProcessors = new ArrayList<>(64);
@@ -304,6 +305,8 @@ public class AnnotationConfigApplicationContext implements ConfigurableApplicati
                 });
         this.beans.clear();
         log.debug("{} closed.", this.getClass().getName());
+
+        ApplicationContextUtils.setApplicationContext(null);
     }
 
     private Set<String> scanForClassNames(Class<?> configClass) {
