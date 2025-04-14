@@ -6,6 +6,9 @@ import java.util.List;
 
 public interface ApplicationContext extends AutoCloseable {
 
+    /**
+     * check if bean exists by name
+     */
     boolean existsBean(String beanName);
 
     /**

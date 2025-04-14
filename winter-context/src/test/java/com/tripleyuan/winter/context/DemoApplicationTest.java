@@ -75,6 +75,17 @@ public class DemoApplicationTest {
         }
     }
 
+    @Test
+    public void testCyclicDependency() {
+        try (AnnotationConfigApplicationContext context =
+                     new AnnotationConfigApplicationContext(DemoApplication.class, createPropertyResolver())) {
+            CyclicBean1 b1 = context.getBean(CyclicBean1.class);
+            CyclicBean2 b2 = context.getBean(CyclicBean2.class);
+            assertThat(b1.getCyclicBean2()).isSameAs(b2);
+            assertThat(b2.getCyclicBean1()).isSameAs(b1);
+        }
+    }
+
     PropertyResolver createPropertyResolver() {
         Properties ps = new Properties();
         return new PropertyResolver(ps);
