@@ -458,7 +458,16 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
         }
         def.setInstance(beanInstance);
 
-        return beanInstance;
+        // Invoke BeanPostProcessor#postProcessBeforeInitialization()
+        for (BeanPostProcessor processor : this.beanPostProcessors) {
+            Object processed = processor.postProcessBeforeInitialization(def.getInstance(), def.getName());
+            // bean has been replaced.
+            if (def.getInstance() != processed) {
+                def.setInstance(processed);
+            }
+        }
+
+        return def.getInstance();
     }
 
     private void injectBean(BeanDefinition def) {
@@ -586,8 +595,15 @@ public class AnnotationConfigApplicationContext implements ApplicationContext {
     }
 
     private Object getProxiedInstance(BeanDefinition def) {
-        // todo
-        return def.getInstance();
+        List<BeanPostProcessor> list = new ArrayList<>(this.beanPostProcessors);
+        Collections.reverse(list);
+
+        Object bean = def.getInstance();
+        for (BeanPostProcessor bpp : list) {
+            bean = bpp.postProcessOnSetProperty(bean, def.getName());
+        }
+
+        return bean;
     }
 
     private void callMethod(Object beanInstance, String methodName, Method method) {
