@@ -16,6 +16,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.tripleyuan</groupId>
+            <artifactId>winter-context</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
             <scope>test</scope>
@@ -40,11 +45,6 @@
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.tripleyuan</groupId>
-            <artifactId>winter-context</artifactId>
-            <version>${project.parent.version}</version>
         </dependency>
     </dependencies>
 
