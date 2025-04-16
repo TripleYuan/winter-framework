@@ -16,6 +16,8 @@
         <module>winter-context</module>
         <module>winter-aop</module>
         <module>winter-jdbc</module>
+        <module>winter-web</module>
+        <module>winter-webapp-helloworld</module>
     </modules>
 
 </project>

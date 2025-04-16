@@ -1,6 +1,6 @@
 package com.tripleyuan.winter.io;
 
-import com.sun.istack.internal.Nullable;
+import jakarta.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
