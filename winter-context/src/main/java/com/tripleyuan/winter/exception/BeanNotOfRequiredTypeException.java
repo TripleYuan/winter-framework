@@ -1,6 +1,6 @@
 package com.tripleyuan.winter.exception;
 
-public class BeanNotOfRequiredTypeException extends RuntimeException {
+public class BeanNotOfRequiredTypeException extends BeansException {
 
     public BeanNotOfRequiredTypeException(String message) {
         super(message);

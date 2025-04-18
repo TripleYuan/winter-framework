@@ -4,7 +4,6 @@ import com.tripleyuan.winter.annotation.*;
 import com.tripleyuan.winter.jdbc.JdbcTemplate;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import lombok.var;
 
 import javax.sql.DataSource;
 

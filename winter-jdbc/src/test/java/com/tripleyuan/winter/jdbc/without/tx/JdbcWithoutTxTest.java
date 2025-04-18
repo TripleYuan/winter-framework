@@ -5,7 +5,6 @@ import com.tripleyuan.winter.exception.DataAccessException;
 import com.tripleyuan.winter.jdbc.ConnectionCallback;
 import com.tripleyuan.winter.jdbc.JdbcTemplate;
 import com.tripleyuan.winter.jdbc.JdbcTestBase;
-import lombok.experimental.var;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;

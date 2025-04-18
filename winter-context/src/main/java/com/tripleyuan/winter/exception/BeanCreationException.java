@@ -1,6 +1,6 @@
 package com.tripleyuan.winter.exception;
 
-public class BeanCreationException extends RuntimeException {
+public class BeanCreationException extends BeansException {
 
     public BeanCreationException(String message) {
         super(message);

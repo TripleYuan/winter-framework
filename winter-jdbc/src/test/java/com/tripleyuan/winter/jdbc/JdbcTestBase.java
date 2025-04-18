@@ -1,7 +1,6 @@
 package com.tripleyuan.winter.jdbc;
 
 import com.tripleyuan.winter.io.PropertyResolver;
-import lombok.var;
 import org.junit.jupiter.api.BeforeEach;
 
 import java.io.IOException;

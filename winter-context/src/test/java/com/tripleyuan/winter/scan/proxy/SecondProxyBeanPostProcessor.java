@@ -3,7 +3,6 @@ package com.tripleyuan.winter.scan.proxy;
 import com.tripleyuan.winter.annotation.Component;
 import com.tripleyuan.winter.annotation.Order;
 import com.tripleyuan.winter.context.BeanPostProcessor;
-import lombok.var;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

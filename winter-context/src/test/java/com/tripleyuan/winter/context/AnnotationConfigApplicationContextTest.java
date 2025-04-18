@@ -2,6 +2,7 @@ package com.tripleyuan.winter.context;
 
 import com.tripleyuan.winter.imported.LocalDateConfiguration;
 import com.tripleyuan.winter.imported.ZonedDateConfiguration;
+import com.tripleyuan.winter.io.PropertyResolver;
 import com.tripleyuan.winter.scan.ScanApplication;
 import com.tripleyuan.winter.scan.convert.ValueConverterBean;
 import com.tripleyuan.winter.scan.custom.annotation.CustomAnnotationBean;
@@ -21,8 +22,6 @@ import com.tripleyuan.winter.scan.proxy.SecondProxyBean;
 import com.tripleyuan.winter.scan.sub1.Sub1Bean;
 import com.tripleyuan.winter.scan.sub1.sub2.Sub2Bean;
 import com.tripleyuan.winter.scan.sub1.sub2.sub3.Sub3Bean;
-import com.tripleyuan.winter.io.PropertyResolver;
-import lombok.var;
 import org.junit.jupiter.api.Test;
 
 import java.time.*;

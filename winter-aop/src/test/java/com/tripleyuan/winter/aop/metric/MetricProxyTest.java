@@ -2,7 +2,6 @@ package com.tripleyuan.winter.aop.metric;
 
 import com.tripleyuan.winter.context.AnnotationConfigApplicationContext;
 import com.tripleyuan.winter.io.PropertyResolver;
-import lombok.var;
 import org.junit.jupiter.api.Test;
 
 import java.util.Properties;

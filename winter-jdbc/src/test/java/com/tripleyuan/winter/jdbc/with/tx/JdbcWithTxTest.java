@@ -4,7 +4,6 @@ import com.tripleyuan.winter.context.AnnotationConfigApplicationContext;
 import com.tripleyuan.winter.exception.TransactionException;
 import com.tripleyuan.winter.jdbc.JdbcTemplate;
 import com.tripleyuan.winter.jdbc.JdbcTestBase;
-import lombok.var;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
